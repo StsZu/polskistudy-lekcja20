@@ -838,7 +838,7 @@ function toggleAnswer(id) {
      TTS + TRANSLATION + AI (Gemini)
 ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
-const apiKey = "AIzaSyAuXexsmMPfNM2_lZeAqU6OUaVUkxGAzsU";
+// API key is server-side only — calls go through /api/tts and /api/llm
 
 // ─── Selection Toolbar ────────────────────────────────────────────────────
 const selectionToolbar = document.getElementById('selection-toolbar');
@@ -951,21 +951,16 @@ async function playLine(text) {
     } catch(e) { console.error("TTS line error:", e); }
 }
 
-// ─── Gemini TTS ────────────────────────────────────────────────────────────
+// ─── Gemini TTS via /api/tts ───────────────────────────────────────────────
 async function generateTTSWithRetry(text, retries = 5) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
-    const payload = {
-        contents: [{ parts: [{ text }] }],
-        generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } }
-        },
-        model: "gemini-2.5-flash-preview-tts"
-    };
     const delays = [1000, 2000, 4000, 8000, 16000];
     for (let i = 0; i < retries; i++) {
         try {
-            const response = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+            const response = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voiceName: 'Aoede' })
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             const inlineData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
@@ -1005,20 +1000,19 @@ function pcmToWav(pcmData, sampleRate) {
     return new Blob([buf], { type:'audio/wav' });
 }
 
-// ─── Gemini LLM ────────────────────────────────────────────────────────────
+// ─── Gemini LLM via /api/llm ──────────────────────────────────────────────
 async function fetchGeminiWithRetry(prompt, systemInstruction, retries=5) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-    const payload = {
-        contents: [{ parts: [{ text: prompt }] }],
-        systemInstruction: { parts: [{ text: systemInstruction }] }
-    };
     const delays = [1000, 2000, 4000, 8000, 16000];
     for (let i=0; i<retries; i++) {
         try {
-            const r = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+            const r = await fetch('/api/llm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, systemInstruction })
+            });
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const data = await r.json();
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response.";
+            return data.text || 'No response.';
         } catch (error) {
             if (i === retries-1) throw error;
             await new Promise(r => setTimeout(r, delays[i]));
